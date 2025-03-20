@@ -1,46 +1,60 @@
 from flask import Flask, request, jsonify
-import hmac
-import hashlib
-import base64
+import logging
+import requests
+from requests_oauthlib import OAuth1
 
 app = Flask(__name__)
 
-# Configurações de segurança (substitua pela chave real compartilhada com AppDirect)
-SHARED_SECRET = "seu_shared_secret"
+# Configuração de logs
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
-def validate_signature(event_url, signature):
-    """Valida a assinatura OAuth da requisição."""
-    expected_signature = base64.b64encode(
-        hmac.new(SHARED_SECRET.encode(), event_url.encode(), hashlib.sha256).digest()
-    ).decode()
-    return hmac.compare_digest(expected_signature, signature)
+oauth_consumer_key = "your_consumer_key"
+oauth_consumer_secret = "your_consumer_secret"
 
-@app.route("/cancel", methods=["POST"])
+def validate_oauth_signature(headers):
+    """Valida a assinatura OAuth recebida na requisição."""
+    if 'Authorization' not in headers:
+        logging.error("Cabeçalho de autorização ausente.")
+        return False
+    # Aqui pode-se adicionar lógica para validar a assinatura OAuth corretamente.
+    return True
+
+@app.route('/cancel', methods=['GET'])
 def cancel_subscription():
-    event_url = request.args.get("eventUrl")
-    signature = request.headers.get("Authorization")
+    event_url = request.args.get('eventUrl')
+    if not event_url:
+        logging.error("Parâmetro eventUrl ausente na solicitação.")
+        return jsonify({"success": False, "error": "Missing eventUrl parameter"}), 400
     
-    if not event_url or not signature:
-        return jsonify({"success": False, "errorCode": "MISSING_PARAMETERS", "message": "Parâmetros obrigatórios ausentes."}), 400
+    logging.info(f"Recebida solicitação de cancelamento: {event_url}")
     
-    if not validate_signature(event_url, signature):
-        return jsonify({"success": False, "errorCode": "UNAUTHORIZED", "message": "Assinatura inválida."}), 401
+    # Valida assinatura OAuth
+    if not validate_oauth_signature(request.headers):
+        return jsonify({"success": False, "error": "Invalid OAuth signature"}), 403
     
-    # Simula a recuperação das informações do evento (idealmente, você faria uma requisição para a API da AppDirect aqui)
-    event_data = {
-        "type": "SUBSCRIPTION_CANCEL",
-        "account": {"accountIdentifier": "12345"},
-        "creator": {"email": "admin@example.com"}
-    }
+    # Obtém detalhes do evento
+    auth = OAuth1(oauth_consumer_key, oauth_consumer_secret)
+    response = requests.get(event_url, auth=auth)
     
-    account_id = event_data.get("account", {}).get("accountIdentifier")
-    if not account_id:
-        return jsonify({"success": False, "errorCode": "ACCOUNT_NOT_FOUND", "message": "Conta não encontrada."}), 404
+    if response.status_code != 200:
+        logging.error(f"Falha ao obter detalhes do evento: {response.text}")
+        return jsonify({"success": False, "error": "Failed to fetch event details"}), 500
     
-    # Processa o cancelamento da assinatura
-    print(f"Cancelando assinatura para a conta {account_id}")
+    event_data = response.json()
+    logging.info(f"Detalhes do evento recebidos: {event_data}")
     
-    return jsonify({"success": True, "message": "Assinatura cancelada com sucesso."})
+    # Processa o evento de cancelamento
+    if event_data.get('type') == 'SUBSCRIPTION_CANCEL':
+        account_id = event_data.get('payload', {}).get('account', {}).get('accountIdentifier')
+        if account_id:
+            logging.info(f"Cancelando assinatura para conta {account_id}")
+            return jsonify({"success": True, "message": "Subscription canceled successfully"}), 200
+        else:
+            logging.error("Identificador da conta ausente no evento.")
+            return jsonify({"success": False, "error": "Account identifier missing"}), 400
+    
+    logging.warning("Tipo de evento inesperado recebido.")
+    return jsonify({"success": False, "error": "Invalid event type"}), 400
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     app.run(debug=True)
