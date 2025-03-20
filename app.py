@@ -8,8 +8,8 @@ app = Flask(__name__)
 # Configuração de logs
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
-oauth_consumer_key = "your_consumer_key"
-oauth_consumer_secret = "your_consumer_secret"
+oauth_consumer_key = "F9hXCJElZF"
+oauth_consumer_secret = "VRWXj1gARHpyNbhPwanM"
 
 def validate_oauth_signature(headers):
     """Valida a assinatura OAuth recebida na requisição."""
