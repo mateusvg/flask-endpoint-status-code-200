@@ -2,3 +2,4 @@ flask
 gunicorn
 logging
 requests
+requests-oauthlib==1.3.1
